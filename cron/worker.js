@@ -23,34 +23,45 @@ function rupiah(number) {
 }
 
 async function sendMessage(tenant, scheduleLabel) {
-  if (!MULTICHAT_TOKEN || !MULTICHAT_INSTANCE) {
-    return { success: false, error: 'multichat token/instance not set' };
-  }
-
-  const jid = formatJid(tenant.phone);
-  const dueStr = tenant.due_date.toISOString().slice(0,10);
+  const url = `https://app.wapanels.com/api/create-message`;
+  const dueStr = tenant.due_date.toISOString().slice(0, 10);
   const msg = `Halo ${tenant.name}, ini pengingat pembayaran kost kamar ${tenant.room} jatuh tempo ${dueStr}. Total Rp ${rupiah(tenant.rent_amount)}.`;
 
-  const url = `https://app.multichat.id/api/v1/send-text`;
   try {
-    const res = await axios.get(url, {
-      params: {
-        token: MULTICHAT_TOKEN,
-        instance_id: MULTICHAT_INSTANCE,
-        jid,
-        msg
+    const formData = new URLSearchParams();
+    formData.append('appkey', process.env.WAPANEL_APPKEY);
+    formData.append('authkey', process.env.WAPANEL_AUTHKEY);
+    formData.append('to', tenant.phone);
+    formData.append('message', msg);
+
+    const res = await axios.post(url, formData, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
       },
       timeout: 10000
     });
 
-    const success = res.data && (res.data.success === true || res.data.success === 'true');
-    await Log.create({ tenant: tenant._id, schedule: scheduleLabel, status: success ? 'success' : 'failed', response: JSON.stringify(res.data) });
+    console.log(res.data);
+    const success = res.data && res.data.message_status === 'Success'; // cek sesuai response wapanels
+    await Log.create({
+      tenant: tenant._id,
+      schedule: scheduleLabel,
+      status: success ? 'success' : 'failed',
+      response: JSON.stringify(res.data)
+    });
+
     return { success, data: res.data };
   } catch (err) {
-    await Log.create({ tenant: tenant._id, schedule: scheduleLabel, status: 'failed', response: err.message });
+    await Log.create({
+      tenant: tenant._id,
+      schedule: scheduleLabel,
+      status: 'failed',
+      response: err.message
+    });
     return { success: false, error: err.message };
   }
 }
+
 
 async function checkAndSend() {
   await connect();
